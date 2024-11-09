@@ -1,56 +1,33 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ProjectForm } from "./ProjectForm";
+import { ProjectTable } from "./ProjectTable";
+import { CategoryDialog } from "./CategoryDialog";
+import { Project } from "@/types/project";
+import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/hooks/use-toast";
-import { Loader2, Plus, Pencil, Trash2 } from "lucide-react";
-
-interface Project {
-  id: number;
-  title: string;
-  description: string;
-  category: string;
-  tags: string;
-  image_url: string;
-  status: string;
-  created_at: string;
-}
+import { Plus, Loader2, RefreshCw, FolderPlus, Settings } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function ProjectsManagement() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    category: '',
-    tags: '',
-    image_url: '',
-  });
-  const navigate = useNavigate();
+  const [formData, setFormData] = useState<Partial<Project>>({});
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const fetchProjects = async () => {
-    try {
+  const { data: projects = [], isLoading } = useQuery({
+    queryKey: ['projects'],
+    queryFn: async () => {
       const token = localStorage.getItem('token');
       const response = await fetch('http://localhost:8080/api/admin/projects', {
         headers: {
@@ -62,28 +39,15 @@ export default function ProjectsManagement() {
         throw new Error('Failed to fetch projects');
       }
       
-      const data = await response.json();
-      setProjects(data);
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to fetch projects",
-      });
-    } finally {
-      setLoading(false);
+      return response.json();
     }
-  };
-
-  useEffect(() => {
-    fetchProjects();
-  }, []);
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
     
     try {
+      const token = localStorage.getItem('token');
       const url = selectedProject 
         ? `http://localhost:8080/api/admin/projects/${selectedProject.id}`
         : 'http://localhost:8080/api/admin/projects';
@@ -100,7 +64,7 @@ export default function ProjectsManagement() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to save project');
+        throw new Error(`Failed to ${selectedProject ? 'update' : 'create'} project`);
       }
 
       toast({
@@ -109,13 +73,14 @@ export default function ProjectsManagement() {
       });
 
       setIsDialogOpen(false);
-      fetchProjects();
-      resetForm();
+      setSelectedProject(null);
+      setFormData({});
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (error) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: error instanceof Error ? error.message : 'Failed to save project',
+        description: `Failed to ${selectedProject ? 'update' : 'create'} project`,
       });
     }
   };
@@ -141,7 +106,7 @@ export default function ProjectsManagement() {
         description: "Project deleted successfully",
       });
 
-      fetchProjects();
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (error) {
       toast({
         variant: "destructive",
@@ -151,152 +116,138 @@ export default function ProjectsManagement() {
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      title: '',
-      description: '',
-      category: '',
-      tags: '',
-      image_url: '',
-    });
-    setSelectedProject(null);
-  };
-
-  const openEditDialog = (project: Project) => {
+  const handleEdit = (project: Project) => {
     setSelectedProject(project);
-    setFormData({
-      title: project.title,
-      description: project.description,
-      category: project.category,
-      tags: project.tags,
-      image_url: project.image_url,
-    });
+    setFormData(project);
     setIsDialogOpen(true);
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+        >
+          <Loader2 className="h-12 w-12 text-primary" />
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto py-10">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Projects Management</h1>
-        <Button onClick={() => setIsDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Add Project
-        </Button>
-      </div>
-
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Title</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created At</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {projects.map((project) => (
-              <TableRow key={project.id}>
-                <TableCell className="font-medium">{project.title}</TableCell>
-                <TableCell>{project.category}</TableCell>
-                <TableCell>{project.status}</TableCell>
-                <TableCell>{new Date(project.created_at).toLocaleDateString()}</TableCell>
-                <TableCell className="text-right space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openEditDialog(project)}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleDelete(project.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {selectedProject ? 'Edit Project' : 'Add New Project'}
-            </DialogTitle>
-            <DialogDescription>
-              Fill in the project details below
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="title">Title</Label>
-                <Input
-                  id="title"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="category">Category</Label>
-                <Input
-                  id="category"
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="tags">Tags (comma separated)</Label>
-                <Input
-                  id="tags"
-                  value={formData.tags}
-                  onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="image_url">Image URL</Label>
-                <Input
-                  id="image_url"
-                  value={formData.image_url}
-                  onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                />
-              </div>
-            </div>
-            <DialogFooter className="mt-6">
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancel
+    <div className="container mx-auto py-10 space-y-8">
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex justify-between items-center"
+      >
+        <div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+            Projects Management
+          </h1>
+          <p className="text-muted-foreground mt-2">Manage and monitor your projects</p>
+        </div>
+        <div className="space-x-4">
+          <Button 
+            variant="outline" 
+            onClick={() => queryClient.invalidateQueries({ queryKey: ['projects'] })}
+            className="hover:scale-105 transition-transform"
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+          <CategoryDialog />
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="hover:scale-105 transition-transform bg-gradient-to-r from-primary to-purple-600">
+                <Plus className="mr-2 h-4 w-4" /> Add Project
               </Button>
-              <Button type="submit">
-                {selectedProject ? 'Update' : 'Create'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  {selectedProject ? 'Edit Project' : 'Add New Project'}
+                </DialogTitle>
+                <DialogDescription>
+                  {selectedProject ? 'Edit the project details below' : 'Fill in the project details below'}
+                </DialogDescription>
+              </DialogHeader>
+              <ProjectForm
+                formData={formData}
+                onSubmit={handleSubmit}
+                onChange={(field, value) => setFormData({ ...formData, [field]: value })}
+                onCancel={() => {
+                  setIsDialogOpen(false);
+                  setSelectedProject(null);
+                  setFormData({});
+                }}
+                isEdit={!!selectedProject}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
+      </motion.div>
+
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="grid grid-cols-1 md:grid-cols-3 gap-6"
+      >
+        <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
+          <Card className="border-l-4 border-l-blue-500 hover:shadow-lg transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
+              <FolderPlus className="h-4 w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-blue-500">{projects.length}</div>
+            </CardContent>
+          </Card>
+        </motion.div>
+        
+        <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
+          <Card className="border-l-4 border-l-purple-500 hover:shadow-lg transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Projects</CardTitle>
+              <Settings className="h-4 w-4 text-purple-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-purple-500">
+                {projects.filter(p => p.status === 'active').length}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+        
+        <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
+          <Card className="border-l-4 border-l-green-500 hover:shadow-lg transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Completed</CardTitle>
+              <RefreshCw className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-green-500">
+                {projects.filter(p => p.status === 'completed').length}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </motion.div>
+
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.4 }}
+        className="rounded-lg border shadow-sm overflow-hidden bg-card"
+      >
+        <ProjectTable
+          projects={projects}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
+      </motion.div>
     </div>
   );
 }

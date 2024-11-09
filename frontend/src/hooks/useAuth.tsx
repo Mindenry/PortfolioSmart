@@ -36,6 +36,12 @@ export const useAuth = create<AuthState>()(
       },
       logout: () => {
         localStorage.removeItem('token');
+        // Force light theme on logout
+        const root = window.document.documentElement;
+        root.classList.remove('dark');
+        root.classList.add('light');
+        localStorage.setItem('theme', 'light');
+        
         set({
           user: null,
           token: null,
